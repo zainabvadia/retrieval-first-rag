@@ -11,6 +11,7 @@ to test and debug when something goes wrong.
 
 import ast
 import operator
+import re
 
 
 # ---- Tool 1: Calculator ----
@@ -111,11 +112,12 @@ def knowledge_base_search(query: str) -> str:
         if not results:
             return "No relevant information found in the knowledge base."
         return "\n".join(f"[{r['source']}] {r['text'].strip()}" for r in results)
-    query_words = {w for w in query.lower().split() if w not in _STOPWORDS}
+    # Tokenize on letters/digits so punctuation ("expenses?") doesn't block a match.
+    query_words = {w for w in re.findall(r"[a-z0-9]+", query.lower()) if w not in _STOPWORDS}
     best_match = None
     best_score = 0
     for topic, content in _KNOWLEDGE_BASE.items():
-        content_words = set(content.lower().replace(".", "").replace(",", "").replace("$", "").split())
+        content_words = set(re.findall(r"[a-z0-9]+", content.lower()))
         topic_words = set(topic.replace("_", " ").split())
         score = len(query_words & (content_words | topic_words))
         if score > best_score:
