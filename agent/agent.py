@@ -15,8 +15,9 @@ MODEL = "claude-sonnet-4-5"
 
 
 class Agent:
-    def __init__(self):
-        self.client = anthropic.Anthropic()
+    def __init__(self, client=None):
+        # The client can be injected so the loop can be tested without network calls.
+        self.client = client if client is not None else anthropic.Anthropic()
 
     def run(self, user_message: str, max_turns: int = 4) -> dict:
         """
@@ -52,7 +53,12 @@ class Agent:
                 if block.type == "tool_use":
                     tool_name = block.name
                     tool_input = block.input
-                    result = TOOL_FUNCTIONS[tool_name](tool_input)
+                    # A bad tool name or a crashing tool must not take down the whole loop:
+                    # report the error back to the model so it can recover or explain.
+                    try:
+                        result = TOOL_FUNCTIONS[tool_name](tool_input)
+                    except Exception as e:
+                        result = f"Tool error ({tool_name}): {e}"
 
                     trace.append({"tool": tool_name, "input": tool_input, "result": result})
 

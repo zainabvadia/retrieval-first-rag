@@ -11,7 +11,10 @@ Run: uvicorn main:app --reload
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import os
+import sys
 from agent import Agent
+import tools
 
 app = FastAPI(title="Agent Service", description="A backend service exposing an AI agent with real tool-calling capabilities.")
 
@@ -24,6 +27,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def _load_knowledge_engine():
+    """
+    Builds the retrieval engine over the sample documents so the agent's
+    knowledge base tool searches real text. If the embedding model is not
+    installed, the agent falls back to keyword search instead of failing.
+    """
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from rag_engine import RAGEngine
+        from sample_data import SAMPLE_DOCUMENTS
+        engine = RAGEngine()
+        engine.ingest(SAMPLE_DOCUMENTS)
+        return engine
+    except Exception as e:
+        print(f"Retrieval engine unavailable ({e}); using keyword fallback.")
+        return None
+
+
+_engine = _load_knowledge_engine()
+if _engine is not None:
+    tools.set_knowledge_engine(_engine)
 
 agent = Agent()
 

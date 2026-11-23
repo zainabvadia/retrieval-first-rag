@@ -26,11 +26,18 @@ _ALLOWED_OPERATORS = {
 }
 
 
+_MAX_EXPONENT = 100
+
+
 def _safe_eval(node):
     if isinstance(node, ast.Constant):
         return node.value
     if isinstance(node, ast.BinOp):
-        return _ALLOWED_OPERATORS[type(node.op)](_safe_eval(node.left), _safe_eval(node.right))
+        left, right = _safe_eval(node.left), _safe_eval(node.right)
+        # Without a cap, an input like 9**9**9 would hang the service (denial of service).
+        if isinstance(node.op, ast.Pow) and abs(right) > _MAX_EXPONENT:
+            raise ValueError(f"Exponent too large (max {_MAX_EXPONENT})")
+        return _ALLOWED_OPERATORS[type(node.op)](left, right)
     if isinstance(node, ast.UnaryOp):
         return _ALLOWED_OPERATORS[type(node.op)](_safe_eval(node.operand))
     raise ValueError(f"Unsupported expression: {node}")
@@ -82,8 +89,28 @@ _STOPWORDS = {"the", "a", "an", "is", "are", "do", "does", "to", "be", "of", "in
               "and", "or", "what", "when", "where", "how", "need", "needs", "i", "my"}
 
 
+# Optional retrieval engine (see rag_engine.py). When set, the knowledge base tool
+# searches real documents with embeddings instead of the keyword fallback below.
+_engine = None
+MIN_SCORE = 0.3  # below this, say "not found" rather than returning weak context
+
+
+def set_knowledge_engine(engine) -> None:
+    global _engine
+    _engine = engine
+
+
 def knowledge_base_search(query: str) -> str:
-    """Searches a small internal knowledge base by keyword overlap, ignoring common stopwords."""
+    """
+    Searches the knowledge base. Uses the retrieval engine when one is configured
+    (returning the source for each passage so answers can be traced), and otherwise
+    falls back to simple keyword overlap that ignores common stopwords.
+    """
+    if _engine is not None:
+        results = _engine.retrieve(query, top_k=2, min_score=MIN_SCORE)
+        if not results:
+            return "No relevant information found in the knowledge base."
+        return "\n".join(f"[{r['source']}] {r['text'].strip()}" for r in results)
     query_words = {w for w in query.lower().split() if w not in _STOPWORDS}
     best_match = None
     best_score = 0
