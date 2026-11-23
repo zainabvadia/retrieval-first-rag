@@ -103,7 +103,7 @@ class RAGEngine:
         texts = [c["text"] for c in self.chunks]
         self.embeddings = self.embedder.encode(texts)
 
-    def retrieve(self, query: str, top_k: int = 3) -> list[dict]:
+    def retrieve(self, query: str, top_k: int = 3, min_score: float | None = None) -> list[dict]:
         """
         Returns the top_k most semantically relevant chunks to the query,
         along with a similarity score, ranked highest first.
@@ -122,6 +122,10 @@ class RAGEngine:
 
         results = []
         for idx in top_indices:
+            # A minimum score lets callers say "nothing relevant found" instead of
+            # being handed the least-bad chunk, which is how wrong context sneaks in.
+            if min_score is not None and scores[idx] < min_score:
+                continue
             results.append({
                 "source": self.chunks[idx]["source"],
                 "text": self.chunks[idx]["text"],
