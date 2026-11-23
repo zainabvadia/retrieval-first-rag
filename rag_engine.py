@@ -7,22 +7,66 @@ not the language model. This engine is built to make retrieval quality
 inspectable and tunable, not just a black box wrapped around an LLM call.
 """
 
-import os
+import re
 import json
 import numpy as np
-from sentence_transformers import SentenceTransformer
+
+
+class SentenceTransformerEmbedder:
+    """
+    Default embedder: a lightweight open-source sentence embedding model.
+    all-MiniLM-L6-v2 is used deliberately: it's small (~80MB), fast on CPU,
+    and strong enough for semantic similarity on short-to-medium chunks.
+    The import is lazy so the rest of the project (and the test suite)
+    works without downloading the model.
+    """
+
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        from sentence_transformers import SentenceTransformer
+        self.model = SentenceTransformer(model_name)
+
+    def encode(self, texts: list[str]) -> np.ndarray:
+        return self.model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+
+
+class HashingEmbedder:
+    """
+    Tiny dependency-free embedder: hashes words into a fixed-size vector.
+    It only captures word overlap, not meaning, so it is NOT a substitute
+    for a real embedding model. It exists so tests and CI can run fast,
+    offline and deterministically, and so the engine's logic (chunking,
+    ranking, thresholds) can be tested separately from the model.
+    """
+
+    _STOP = {"the", "a", "an", "is", "are", "do", "does", "to", "be", "of", "in", "on",
+             "for", "and", "or", "what", "when", "where", "how", "i", "my", "can", "need"}
+
+    def __init__(self, dim: int = 512):
+        self.dim = dim
+
+    def _vec(self, text: str) -> np.ndarray:
+        v = np.zeros(self.dim, dtype=np.float32)
+        for w in re.findall(r"[a-z0-9$]+", text.lower()):
+            if w in self._STOP:
+                continue
+            h = int.from_bytes(__import__("hashlib").md5(w.encode()).digest()[:4], "little")
+            v[h % self.dim] += 1.0
+        n = np.linalg.norm(v)
+        return v / n if n else v
+
+    def encode(self, texts: list[str]) -> np.ndarray:
+        return np.stack([self._vec(t) for t in texts])
 
 
 class RAGEngine:
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", embedder=None):
         """
-        Loads a lightweight open-source embedding model.
-        all-MiniLM-L6-v2 is used here deliberately: it's small (~80MB),
-        fast on CPU, and strong enough for semantic similarity on
-        short-to-medium length text chunks, a reasonable production
-        default before reaching for something heavier.
+        embedder: any object with encode(list[str]) -> normalized np.ndarray.
+        Defaults to the sentence-transformers model, which keeps retrieval
+        and embedding separate so each can be swapped, tested and evaluated
+        on its own.
         """
-        self.model = SentenceTransformer(model_name)
+        self.embedder = embedder if embedder is not None else SentenceTransformerEmbedder(model_name)
         self.chunks = []
         self.embeddings = None
 
@@ -57,7 +101,7 @@ class RAGEngine:
                 self.chunks.append({"source": source, "text": chunk})
 
         texts = [c["text"] for c in self.chunks]
-        self.embeddings = self.model.encode(texts, convert_to_numpy=True, normalize_embeddings=True)
+        self.embeddings = self.embedder.encode(texts)
 
     def retrieve(self, query: str, top_k: int = 3) -> list[dict]:
         """
@@ -72,7 +116,7 @@ class RAGEngine:
         if self.embeddings is None or len(self.chunks) == 0:
             raise ValueError("No documents ingested yet. Call ingest() first.")
 
-        query_embedding = self.model.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+        query_embedding = self.embedder.encode([query])[0]
         scores = self.embeddings @ query_embedding
         top_indices = np.argsort(scores)[::-1][:top_k]
 
