@@ -1,0 +1,10 @@
+[
+  {"query": "How much can I spend before needing manager approval?", "expected_source": "expense_policy.txt"},
+  {"query": "When do I have to submit an expense report?", "expected_source": "expense_policy.txt"},
+  {"query": "How long does reimbursement take?", "expected_source": "expense_policy.txt"},
+  {"query": "When do remote employees get their equipment?", "expected_source": "onboarding_policy.txt"},
+  {"query": "Who do I contact for IT help during onboarding?", "expected_source": "onboarding_policy.txt"},
+  {"query": "What do I need to finish in my first two weeks?", "expected_source": "onboarding_policy.txt"},
+  {"query": "What hours do I need to be online if I work remotely?", "expected_source": "remote_work_policy.txt"},
+  {"query": "Who approves a fully remote arrangement?", "expected_source": "remote_work_policy.txt"}
+]
