@@ -1,1 +1,241 @@
-<!doctype html><title>UI</title>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrieval Explorer</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg:#0f1117; --panel:#171a23; --panel2:#1c2030; --border:#2a2f3d; --text:#e8e9ed; --muted:#8b8fa3;
+          --accent:#7c5cff; --sem:#6ea8ff; --kw:#ffb454; --ok:#4cc38a; --bad:#ef6a6a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+  .app { max-width:1100px; margin:0 auto; padding:28px 16px 48px; }
+  h1 { margin:0; font-size:24px; }
+  .sub { color:var(--muted); margin:2px 0 14px; }
+  .badge { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px; border:1px solid var(--border); color:var(--muted); }
+  .badge.warn { color:var(--kw); border-color:var(--kw); }
+  nav { display:flex; gap:8px; margin:16px 0; }
+  nav button { background:var(--panel); color:var(--muted); border:1px solid var(--border); padding:8px 18px; border-radius:8px; cursor:pointer; font:inherit; }
+  nav button.active { color:var(--text); border-color:var(--accent); }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; margin-bottom:12px; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+  input[type=text], textarea, select { background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:9px 11px; font:inherit; }
+  input[type=text].grow { flex:1; min-width:240px; }
+  textarea { width:100%; min-height:110px; resize:vertical; }
+  button.primary { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 18px; cursor:pointer; font:inherit; }
+  button.primary:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:3px 10px; cursor:pointer; }
+  button.ghost:hover { color:var(--bad); border-color:var(--bad); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .chip { background:transparent; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:4px 11px; cursor:pointer; font-size:13px; }
+  .chip:hover { color:var(--text); border-color:var(--accent); }
+  .cols { display:grid; gap:14px; }
+  .cols.three { grid-template-columns:repeat(3, 1fr); }
+  @media (max-width:900px) { .cols.three { grid-template-columns:1fr; } }
+  .colhead { font-weight:600; margin-bottom:8px; display:flex; justify-content:space-between; }
+  .hit { background:var(--panel2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; }
+  .hit-head { display:flex; justify-content:space-between; gap:8px; font-size:13px; color:var(--muted); }
+  .hit-head b { color:var(--text); }
+  .bars { margin:6px 0; display:grid; gap:3px; font-size:11px; color:var(--muted); }
+  .bar { display:flex; align-items:center; gap:6px; }
+  .bar i { display:block; height:5px; border-radius:3px; }
+  .bar.s i { background:var(--sem); } .bar.k i { background:var(--kw); }
+  .bar span { width:62px; } .bar em { font-style:normal; width:50px; text-align:right; }
+  .hit p { margin:6px 0 0; font-size:14px; }
+  mark { background:rgba(255,180,84,.28); color:var(--text); border-radius:3px; padding:0 2px; }
+  .empty, .error { padding:12px; border-radius:8px; border:1px dashed var(--border); color:var(--muted); }
+  .error { color:var(--bad); border-color:var(--bad); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  th { color:var(--muted); font-weight:500; font-size:13px; }
+  .metric { display:flex; align-items:center; gap:8px; }
+  .metric i { display:block; height:8px; background:var(--accent); border-radius:4px; }
+  .rank-ok { color:var(--ok); } .rank-miss { color:var(--bad); font-weight:700; }
+  .doc { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--border); }
+  .doc small { color:var(--muted); }
+  .note { color:var(--muted); font-size:13px; margin-top:12px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Retrieval Explorer</h1>
+  <p class="sub">See what a RAG system actually retrieves, compare ways of ranking, and measure it. <span id="status" class="badge">connecting…</span></p>
+
+  <nav role="tablist">
+    <button role="tab" data-tab="search" class="active">Search</button>
+    <button role="tab" data-tab="docs">Documents</button>
+    <button role="tab" data-tab="eval">Evaluate</button>
+  </nav>
+
+  <section id="tab-search" class="panel">
+    <div class="row">
+      <label class="grow" style="flex:1">Question
+        <input id="q" class="grow" type="text" value="How much can I spend before I need manager approval?" aria-label="Question">
+      </label>
+      <label>Mode
+        <select id="mode">
+          <option value="compare">Compare all 3</option>
+          <option value="semantic">Semantic</option>
+          <option value="keyword">Keyword (BM25)</option>
+          <option value="hybrid">Hybrid</option>
+        </select>
+      </label>
+      <label>Top k
+        <select id="topk"><option>1</option><option>2</option><option selected>3</option><option>5</option></select>
+      </label>
+      <button id="go" class="primary">Search</button>
+    </div>
+    <div class="chips" id="examples"></div>
+    <div id="results"></div>
+    <p class="note"><b>Semantic</b> compares meaning (embeddings). <b>Keyword</b> compares exact words (BM25). <b>Hybrid</b> fuses both rankings, so a chunk both methods like rises to the top.</p>
+  </section>
+
+  <section id="tab-docs" class="panel hidden">
+    <div id="doclist"></div>
+    <h3>Add or replace a document</h3>
+    <div class="row"><label style="flex:1">Name <input id="docname" type="text" class="grow" placeholder="e.g. travel_policy.txt"></label></div>
+    <textarea id="doctext" placeholder="Paste the text here. It is chunked and indexed immediately."></textarea>
+    <div class="row" style="margin-top:10px"><button id="adddoc" class="primary">Add document</button><span id="docmsg" class="note"></span></div>
+  </section>
+
+  <section id="tab-eval" class="panel hidden">
+    <div class="row">
+      <label>k <select id="evalk"><option>1</option><option>2</option><option selected>3</option><option>5</option></select></label>
+      <button id="runeval" class="primary">Run evaluation</button>
+    </div>
+    <div id="evalout"></div>
+    <p class="note">Hit rate@k: share of questions whose correct document appears in the top k. MRR: average of 1/rank of the correct document. The labeled set is small (see <code>eval_set.json</code>), so use it to compare approaches, not as a general benchmark.</p>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const MODES = { semantic: "Semantic", keyword: "Keyword (BM25)", hybrid: "Hybrid" };
+const EXAMPLES = ["How much can I spend before I need manager approval?", "I clicked a phishing email, who do I tell?", "Do remote employees get equipment?", "expenses?"];
+
+function el(tag, props = {}, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v; else if (k === "style") n.setAttribute("style", v);
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+  return n;
+}
+
+async function api(path, options) {
+  const res = await fetch(path, options && { ...options, headers: { "Content-Type": "application/json" } });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Request failed (" + res.status + ")");
+  return body;
+}
+
+// ---- highlighting (builds DOM nodes, never injects HTML) ----
+const STOP = new Set(["the","a","an","is","are","do","does","to","be","of","in","on","for","and","or","what","when","where","how","i","my","can","need","who","get"]);
+const norm = (w) => { w = w.toLowerCase().replace(/[^a-z0-9$]/g, ""); return w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w; };
+function highlight(text, query) {
+  const terms = new Set(query.split(/\W+/).map(norm).filter((w) => w && !STOP.has(w)));
+  return text.split(/(\s+)/).map((part) => terms.has(norm(part)) && part.trim() ? el("mark", {}, part) : part);
+}
+
+// ---- search ----
+function hitCard(h, query, maxSem, maxKw) {
+  const bar = (cls, label, v, max) => el("div", { class: "bar " + cls }, el("span", {}, label),
+    el("i", { style: "width:" + Math.max(2, Math.round((max > 0 ? Math.max(v, 0) / max : 0) * 100)) + "%" }), el("em", {}, v.toFixed(3)));
+  return el("div", { class: "hit" },
+    el("div", { class: "hit-head" }, el("span", {}, el("b", {}, h.source), " · chunk " + (h.chunk_index + 1)), el("span", {}, "score " + h.score.toFixed(3))),
+    el("div", { class: "bars" }, bar("s", "semantic", h.semantic_score, maxSem), bar("k", "keyword", h.keyword_score, maxKw)),
+    el("p", {}, highlight(h.text, query)));
+}
+
+async function runSearch() {
+  const query = $("q").value.trim(), out = $("results");
+  if (!query) { out.replaceChildren(el("div", { class: "empty" }, "Type a question first.")); return; }
+  const mode = $("mode").value, top_k = +$("topk").value;
+  $("go").disabled = true;
+  try {
+    const modes = mode === "compare" ? ["semantic", "keyword", "hybrid"] : [mode];
+    const all = await Promise.all(modes.map((m) => api("/api/search", { method: "POST", body: JSON.stringify({ query, top_k, mode: m }) })));
+    const cols = el("div", { class: "cols" + (modes.length > 1 ? " three" : "") });
+    all.forEach((r, i) => {
+      const maxSem = Math.max(0, ...r.results.map((h) => h.semantic_score)), maxKw = Math.max(0, ...r.results.map((h) => h.keyword_score));
+      cols.append(el("div", {},
+        el("div", { class: "colhead" }, MODES[modes[i]]),
+        r.results.length ? r.results.map((h) => hitCard(h, query, maxSem, maxKw))
+          : el("div", { class: "empty" }, "No chunk shares a word with this question, so keyword search returns nothing.")));
+    });
+    out.replaceChildren(cols);
+  } catch (e) { out.replaceChildren(el("div", { class: "error" }, e.message)); }
+  finally { $("go").disabled = false; }
+}
+
+// ---- documents ----
+async function loadDocs(data) {
+  try {
+    const { documents } = data || await api("/api/documents");
+    $("doclist").replaceChildren(...(documents.length ? documents.map((d) =>
+      el("div", { class: "doc" }, el("div", {}, el("b", {}, d.source), el("br"), el("small", {}, d.chunks + " chunk(s), " + d.words + " words")),
+        el("button", { class: "ghost", "aria-label": "Delete " + d.source, onclick: () => removeDoc(d.source) }, "Delete")))
+      : [el("div", { class: "empty" }, "No documents indexed. Add one below.")]));
+    refreshStatus();
+  } catch (e) { $("doclist").replaceChildren(el("div", { class: "error" }, e.message)); }
+}
+async function removeDoc(source) {
+  try { loadDocs(await api("/api/documents/" + encodeURIComponent(source), { method: "DELETE" })); } catch (e) { $("docmsg").textContent = e.message; }
+}
+async function addDoc() {
+  const source = $("docname").value.trim(), text = $("doctext").value;
+  if (!source || !text.trim()) { $("docmsg").textContent = "Give the document a name and some text."; return; }
+  $("adddoc").disabled = true;
+  try {
+    loadDocs(await api("/api/documents", { method: "POST", body: JSON.stringify({ source, text }) }));
+    $("docmsg").textContent = "Indexed " + source + ".";
+    $("docname").value = ""; $("doctext").value = "";
+  } catch (e) { $("docmsg").textContent = e.message; }
+  finally { $("adddoc").disabled = false; }
+}
+
+// ---- evaluation ----
+async function runEval() {
+  const out = $("evalout"); $("runeval").disabled = true;
+  try {
+    const k = +$("evalk").value, res = await api("/api/evaluate", { method: "POST", body: JSON.stringify({ k }) });
+    const metric = (v) => el("div", { class: "metric" }, el("i", { style: "width:" + Math.round(v * 120) + "px" }), v.toFixed(2));
+    const summary = el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Mode"), el("th", {}, "Hit rate@" + k), el("th", {}, "MRR"))),
+      el("tbody", {}, Object.keys(MODES).map((m) => el("tr", {}, el("td", {}, MODES[m]), el("td", {}, metric(res[m].hit_rate)), el("td", {}, metric(res[m].mrr))))));
+    const detail = el("table", { style: "margin-top:18px" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Question"), el("th", {}, "Correct document"), ...Object.values(MODES).map((n) => el("th", {}, n)))),
+      el("tbody", {}, res.semantic.per_query.map((q, i) => el("tr", {}, el("td", {}, q.query), el("td", {}, q.expected),
+        ...Object.keys(MODES).map((m) => { const r = res[m].per_query[i].rank; return el("td", { class: r ? "rank-ok" : "rank-miss" }, r ? "#" + r : "miss"); })))));
+    out.replaceChildren(el("p", {}, res.semantic.queries + " labeled questions, k = " + k + "."), summary, detail);
+  } catch (e) { out.replaceChildren(el("div", { class: "error" }, e.message)); }
+  finally { $("runeval").disabled = false; }
+}
+
+// ---- status + wiring ----
+async function refreshStatus() {
+  try {
+    const s = await api("/api/status"), b = $("status");
+    b.textContent = s.embedder + " · " + s.documents + " docs · " + s.chunks + " chunks";
+    b.classList.toggle("warn", s.embedder.startsWith("hashing"));
+    b.title = s.embedder.startsWith("hashing") ? "The sentence-embedding model is not installed, so 'semantic' only matches shared words. Install sentence-transformers for real semantic search." : "";
+  } catch { $("status").textContent = "API not reachable"; }
+}
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
+  for (const t of ["search", "docs", "eval"]) $("tab-" + t).classList.toggle("hidden", t !== b.dataset.tab);
+  if (b.dataset.tab === "docs") loadDocs();
+}));
+EXAMPLES.forEach((ex) => $("examples").append(el("button", { class: "chip", onclick: () => { $("q").value = ex; runSearch(); } }, ex)));
+$("go").addEventListener("click", runSearch);
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+$("adddoc").addEventListener("click", addDoc);
+$("runeval").addEventListener("click", runEval);
+refreshStatus(); runSearch();
+</script>
+</body>
+</html>

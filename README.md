@@ -23,6 +23,17 @@ The embedder is pluggable (`SentenceTransformerEmbedder` by default). A tiny `Ha
 python evaluation.py
 ```
 
+### Retrieval modes
+`retrieve(query, mode=...)` supports three ways of ranking the same chunks:
+
+| Mode | How it ranks | Strong at | Weak at |
+|---|---|---|---|
+| `semantic` (default) | cosine similarity of embeddings | paraphrases, different wording | exact codes, names, numbers |
+| `keyword` | BM25 word matching | exact terms | meaning; returns nothing if no word overlaps |
+| `hybrid` | reciprocal rank fusion of the two rankings | chunks both methods agree on | needs both signals to be reasonable |
+
+Documents can also be added and removed at runtime (`add_documents`, `remove_document`) without re-embedding everything that is already indexed.
+
 ### Running the retrieval engine
 ```bash
 pip install -r requirements.txt
@@ -46,18 +57,29 @@ uvicorn main:app --reload
 ```
 Then open `agent/index.html` directly in your browser, it connects to the running API automatically.
 
+### Retrieval Explorer (UI)
+With the service running, open **http://localhost:8000/ui**. It has three tabs:
+- **Search**: ask a question and compare semantic, keyword and hybrid results side by side, with per-method score bars and the matching words highlighted.
+- **Documents**: paste in a document and it is chunked and indexed immediately; delete documents to see how answers change.
+- **Evaluate**: runs the labeled query set through every mode and shows hit rate@k, MRR and the rank each question got.
+
+The status badge shows which embedder is active. If `sentence-transformers` is not installed the service falls back to a word-overlap embedder so the UI still works, and says so; in that case "semantic" is only matching shared words, so install the real model before judging semantic search.
+
+API: `POST /api/search`, `GET/POST /api/documents`, `DELETE /api/documents/{source}`, `POST /api/evaluate`, `GET /api/status`.
+
 ## Testing
 
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest -q
 ```
-27 tests run on every push through GitHub Actions. They cover chunk overlap, ranking and score thresholds, index save/load, the evaluation metrics, calculator safety (code injection, divide by zero, huge exponents), the agent loop using a scripted fake model client, and the HTTP API. Writing them found two real bugs: `9**9**9` hung the calculator, and the keyword fallback missed words with punctuation (`"expenses?"`).
+49 tests run on every push through GitHub Actions. They cover chunk overlap, ranking and score thresholds, index save/load, the evaluation metrics, calculator safety (code injection, divide by zero, huge exponents), the agent loop using a scripted fake model client, keyword and hybrid retrieval, adding and removing documents, and the HTTP API (agent and retrieval endpoints). Writing them found two real bugs: `9**9**9` hung the calculator, and the keyword fallback missed words with punctuation (`"expenses?"`).
 
-**Limits:** the tests use the hashing embedder and a fake model client, so they verify the logic, not real embedding quality or live model behavior. The evaluation set is small (8 queries over 3 documents).
+**Limits:** the tests use the hashing embedder and a fake model client, so they verify the logic, not real embedding quality or live model behavior. The evaluation set is small (8 queries over 3 documents), and on a corpus this small every mode can score perfectly, so it shows how to measure rather than which mode is better. A bigger, harder set is the next step.
 
 ## What I'd add next
 
+- Grow the corpus and eval set until the three modes actually separate, then report which wins and why
 - Add re-ranking as a second retrieval pass for higher precision on ambiguous queries
 - Add a rate limiter and authentication layer before any real deployment
 - Grow the evaluation set and track hit rate and MRR across embedding models and chunk sizes
