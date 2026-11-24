@@ -1,5 +1,6 @@
 import json
 import os
+import pytest
 from evaluation import evaluate
 from rag_engine import RAGEngine, HashingEmbedder
 from sample_data import SAMPLE_DOCUMENTS
@@ -7,11 +8,19 @@ from sample_data import SAMPLE_DOCUMENTS
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+@pytest.fixture
+def engine_and_labels():
+    engine = RAGEngine(embedder=HashingEmbedder())
+    engine.ingest(SAMPLE_DOCUMENTS)
+    with open(os.path.join(ROOT, "eval_set.json")) as f:
+        return engine, json.load(f)
+
+
 class StubEngine:
     def __init__(self, sources):
         self.sources = sources
 
-    def retrieve(self, query, top_k=3):
+    def retrieve(self, query, top_k=3, mode="semantic"):
         return [{"source": s, "text": "", "score": 1.0} for s in self.sources[:top_k]]
 
 
@@ -39,3 +48,19 @@ def test_labeled_set_meets_a_quality_floor():
         labeled = json.load(f)
     report = evaluate(engine, labeled, k=3)
     assert report["hit_rate"] >= 0.9  # fails if a change makes retrieval worse
+
+
+def test_evaluate_reports_per_query_ranks_and_mode(engine_and_labels):
+    engine, labeled = engine_and_labels
+    report = evaluate(engine, labeled, k=3, mode="hybrid")
+    assert report["mode"] == "hybrid"
+    assert len(report["per_query"]) == report["queries"]
+    assert all(q["rank"] is None or 1 <= q["rank"] <= 3 for q in report["per_query"])
+
+
+def test_compare_modes_covers_every_mode(engine_and_labels):
+    from evaluation import compare_modes
+    engine, labeled = engine_and_labels
+    out = compare_modes(engine, labeled, k=3)
+    assert set(out) == {"semantic", "keyword", "hybrid"}
+    assert all(0.0 <= r["mrr"] <= r["hit_rate"] <= 1.0 for r in out.values())
